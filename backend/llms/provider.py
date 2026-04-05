@@ -17,7 +17,7 @@ class MCQProvider:
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {"model": "llama3", "prompt": prompt, "stream": False}
-                async with session.post(self.ollama_url, json=payload, timeout=10) as resp:
+                async with session.post(self.ollama_url, json=payload, timeout=5) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         return data['response']
