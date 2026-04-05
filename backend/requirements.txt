@@ -13,6 +13,6 @@ langchain-chroma
 chromadb
 sentence-transformers
 aiohttp
-google-generativeai
+google-genai
 groq
 python-dotenv

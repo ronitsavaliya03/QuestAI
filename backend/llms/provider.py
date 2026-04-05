@@ -1,6 +1,9 @@
 import os
+from xmlrpc import client
+
+from prompt_toolkit import prompt
 import aiohttp
-import google.generativeai as genai
+from google import genai
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -27,9 +30,12 @@ class MCQProvider:
         # 2. Try Gemini (Fast API)
         if self.gemini_key:
             try:
-                genai.configure(api_key=self.gemini_key)
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                response = model.generate_content(prompt)
+                client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
                 return response.text
             except Exception as e:
                 print(f"Gemini failed: {e}, switching to Groq...")
