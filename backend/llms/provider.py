@@ -1,5 +1,4 @@
 import os
-
 import aiohttp
 from google import genai
 from groq import Groq
@@ -28,7 +27,7 @@ class MCQProvider:
         # 2. Try Gemini (Fast API)
         if self.gemini_key:
             try:
-                client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+                client = genai.Client(api_key=self.gemini_key)
 
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',

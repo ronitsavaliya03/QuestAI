@@ -53,7 +53,10 @@ app = FastAPI(title="MCQ Generator API (RAG Version)", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://quest-ai-six.vercel.app",
+        "http://localhost:3000"            
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
