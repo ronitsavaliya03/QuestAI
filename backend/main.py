@@ -24,7 +24,7 @@ import uvicorn
 # --- RAG IMPORTS ---
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 
 # --- LIBREOFFICE CONFIGURATION ---
@@ -53,7 +53,8 @@ app = FastAPI(title="MCQ Generator API (RAG Version)", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -64,7 +65,10 @@ provider = MCQProvider()
 os.makedirs("temp_data", exist_ok=True)
 
 # Initialize the local embedding model (downloads a tiny, fast model the first time)
-embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+embeddings_model = GoogleGenerativeAIEmbeddings(
+    model="models/gemini-embedding-001",
+    google_api_key=os.getenv("GEMINI_API_KEY")
+)
 
 
 class GenerateRequest(BaseModel):

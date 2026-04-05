@@ -8,7 +8,7 @@ pytesseract
 fpdf
 langchain-core
 langchain-community
-langchain-huggingface
+langchain_google_genai
 langchain-chroma
 chromadb
 sentence-transformers
