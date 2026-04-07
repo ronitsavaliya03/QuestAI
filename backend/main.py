@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import re
 import os
@@ -106,6 +107,13 @@ def cleanup_chroma_folder(directory_path: str):
             print(f"🧹 Success: Cleaned up temporary DB at {directory_path}")
         except Exception as e:
             print(f"⚠️ Error cleaning up {directory_path}: {e}")
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "time": datetime.utcnow()
+    }
 
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
