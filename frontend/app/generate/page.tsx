@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { UploadCloud, FileText, Loader2, CheckCircle2, Download, AlertCircle, Search, Send, Bot, X, MessageCircle, Presentation, FileDown, ArrowRight, RotateCcw, Eye, XCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -527,8 +528,8 @@ export default function GeneratePage() {
               <button
                 onClick={() => setRevealAll(!revealAll)}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition-all ${revealAll
-                    ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30'
-                    : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10'
+                  ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30'
+                  : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10'
                   }`}
               >
                 <Eye className="w-4 h-4" />
@@ -663,10 +664,65 @@ export default function GeneratePage() {
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] sm:max-w-[80%] p-3.5 rounded-2xl text-sm leading-relaxed ${msg.role === "user"
-                    ? "bg-purple-600 text-white rounded-br-none"
-                    : "bg-white/10 text-gray-200 border border-white/10 rounded-bl-none prose prose-invert prose-p:my-1 prose-sm"
-                    }`}>
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      ? "bg-purple-600 text-white rounded-br-none"
+                      : "bg-white/5 text-gray-200 border border-white/10 rounded-bl-none"
+                    }`}
+                  >
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        // Target paragraphs
+                        p: ({ node, ...props }) => <p className="mb-3 last:mb-0" {...props} />,
+
+                        // Target bold text to make it pop
+                        strong: ({ node, ...props }) => <strong className="font-semibold text-purple-300" {...props} />,
+
+                        // Style numbered lists
+                        ol: ({ node, ...props }) => <ol className="mb-4 space-y-2 list-decimal list-outside ml-4 marker:text-purple-400 marker:font-bold" {...props} />,
+
+                        // Create custom styled bullet points
+                        ul: ({ node, ...props }) => <ul className="mb-4 space-y-2 list-none" {...props} />,
+                        li: ({ node, ...props }) => (
+                          <li className="flex items-start gap-2">
+                            <span className="text-purple-500 mt-0.5 flex-shrink-0">✦</span>
+                            <span {...props} />
+                          </li>
+                        ),
+
+                        // Style Headings
+                        h1: ({ node, ...props }) => <h1 className="text-lg font-bold text-white mt-4 mb-2 pb-1 border-b border-white/10" {...props} />,
+                        h2: ({ node, ...props }) => <h2 className="text-base font-bold text-white mt-4 mb-2" {...props} />,
+                        h3: ({ node, ...props }) => <h3 className="text-sm font-bold text-white mt-3 mb-1 uppercase tracking-wider" {...props} />,
+
+                        // Style inline code and code blocks
+                        code: ({ node, ...props }: any) => {
+                          const inline = (props.className || '').includes('language-');
+                          return inline ? (
+                            <code className="bg-black/30 text-purple-200 px-1.5 py-0.5 rounded-md text-xs font-mono border border-purple-500/20" {...props} />
+                          ) : (
+                            <div className="bg-[#050505] p-3 rounded-xl border border-white/10 my-3 overflow-x-auto shadow-inner">
+                              <code className="text-xs font-mono text-gray-300 block" {...props} />
+                            </div>
+                          );
+                        },
+
+                        // Style blockquotes for emphasis
+                        blockquote: ({ node, ...props }) => (
+                          <blockquote className="border-l-2 border-purple-500 pl-4 py-1 my-3 bg-purple-500/5 text-gray-300 italic rounded-r-lg" {...props} />
+                        ),
+
+                        // Style Tables
+                        table: ({ node, ...props }) => (
+                          <div className="overflow-x-auto my-4 rounded-xl border border-white/10">
+                            <table className="w-full text-left text-sm" {...props} />
+                          </div>
+                        ),
+                        th: ({ node, ...props }) => <th className="bg-white/5 px-4 py-2 font-semibold text-white border-b border-white/10" {...props} />,
+                        td: ({ node, ...props }) => <td className="px-4 py-2 border-b border-white/5 text-gray-300" {...props} />
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
                   </div>
                 </div>
               ))}

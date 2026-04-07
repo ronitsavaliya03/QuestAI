@@ -209,6 +209,8 @@ async def generate_mcqs(request: GenerateRequest, background_tasks: BackgroundTa
             parsed_data = json.loads(cleaned_response)
             # background_tasks.add_task(cleanup_chroma_folder, persist_dir)
             
+            # gc.collect()
+
             return parsed_data
             
         except json.JSONDecodeError:
@@ -306,22 +308,22 @@ async def chat_with_pdf(request: ChatRequest):
 
         prompt = f"""You are an expert, encouraging AI Tutor for the QuestAI learning platform. Your primary goal is to help a student understand the material from their uploaded document.
 
-You must strictly adhere to the following rules:
-1. PRIMARY GROUNDING: Always prioritize answering the user's question using the provided "Document Context" first.
-2. GRACEFUL FALLBACK (OUTSIDE KNOWLEDGE): If the user asks for a better explanation, an analogy, or a concept that is NOT in the document context, you are allowed to use your general AI knowledge to help them learn. 
-   * CRITICAL: If you use outside knowledge, you MUST explicitly state it. Use phrases like: "The document doesn't specifically mention this, but to help you understand..." or "Stepping outside the provided text for a moment..."
-3. CLEAR FORMATTING: Use Markdown extensively. Use **bold text** for key terms, use bullet points for lists, and break long explanations into small, readable paragraphs.
-4. TUTOR PERSONA: Be encouraging, academic, and clear. If a concept is difficult, proactively offer to break it down step-by-step or provide an analogy.
-5. CONTEXT AWARENESS: Use the "Conversation History" to understand pronouns or references, but always ground your factual answers in the context when possible.
+                You must strictly adhere to the following rules:
+                1. PRIMARY GROUNDING: Always prioritize answering the user's question using the provided "Document Context" first.
+                2. GRACEFUL FALLBACK (OUTSIDE KNOWLEDGE): If the user asks for a better explanation, an analogy, or a concept that is NOT in the document context, you are allowed to use your general AI knowledge to help them learn. 
+                * CRITICAL: If you use outside knowledge, you MUST explicitly state it. Use phrases like: "The document doesn't specifically mention this, but to help you understand..." or "Stepping outside the provided text for a moment..."
+                3. CLEAR FORMATTING: Use Markdown extensively. Use **bold text** for key terms, use bullet points for lists, and break long explanations into small, readable paragraphs.
+                4. TUTOR PERSONA: Be encouraging, academic, and clear. If a concept is difficult, proactively offer to break it down step-by-step or provide an analogy.
+                5. CONTEXT AWARENESS: Use the "Conversation History" to understand pronouns or references, but always ground your factual answers in the context when possible.
 
---- Document Context ---
-{context}
+                --- Document Context ---
+                {context}
 
---- Conversation History ---
-{formatted_history}
+                --- Conversation History ---
+                {formatted_history}
 
-User: {request.message}
-Tutor:"""
+                User: {request.message}
+                Tutor:"""
 
         # 5. Use your custom MCQProvider to get the response!
         provider = MCQProvider()
