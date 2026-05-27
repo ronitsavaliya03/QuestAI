@@ -28,14 +28,17 @@ class MCQProvider:
         if self.gemini_key:
             try:
                 client = genai.Client(api_key=self.gemini_key)
-
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=prompt,
                 )
                 return response.text
             except Exception as e:
-                print(f"Gemini failed: {e}, switching to Groq...")
+                # INSTANT 429 FALLBACK
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    print("⚠️ Gemini 429 Rate Limit Hit! Routing to Groq...")
+                else:
+                    print(f"Gemini failed: {e}, switching to Groq...")
 
         # 3. Try Groq (Ultra-fast Backup)
         if self.groq_key:

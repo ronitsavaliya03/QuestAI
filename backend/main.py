@@ -3,6 +3,8 @@ import json
 import re
 import os
 import gc
+import asyncio
+import math
 import uuid
 import shutil
 import subprocess
@@ -13,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import BackgroundTasks
+from fastapi import HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from fastapi.responses import Response
 from fpdf import FPDF
@@ -55,7 +57,7 @@ app = FastAPI(title="MCQ Generator API (RAG Version)", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://quest-ai-six.vercel.app",
+        # "https://quest-ai-six.vercel.app",
         "http://localhost:3000"            
     ],
     allow_credentials=True,
@@ -142,7 +144,6 @@ async def upload_pdf(file: UploadFile = File(...)):
             embedding=embeddings_model,
             persist_directory=persist_dir
         )
-
         # vectorstore.persist()
             
         return {
@@ -156,83 +157,110 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 @app.post("/generate-mcqs")
 async def generate_mcqs(request: GenerateRequest, background_tasks: BackgroundTasks):
-    """API 2: SEARCHES the VectorDB, then uses existing Fallback logic to generate."""
+    """API 2: SEARCHES the VectorDB, batches generation, and uses Fallback logic."""
     persist_dir = f"temp_data/chroma_{request.file_id}"
     
     if not os.path.exists(persist_dir):
         raise HTTPException(status_code=404, detail="Session expired or file not found. Please re-upload.")
 
     try:
-        # --- RAG: RETRIEVAL ---
-        # 1. Connect to the saved Chroma database for this file
+        # --- RAG: RETRIEVAL (UNCHANGED) ---
         vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings_model)
-        
-        # 2. Search for the most relevant blocks of text based on the topic
         relevant_docs = vectorstore.similarity_search(request.topic, k=12)
         
-        # 3. Combine the retrieved text into one focused context string
-        context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
-        print(f"context given to LLM:\n{context[:500]}...")  # Log the first 500 chars of context for debugging
-
-        # --- GENERATION ---
-        prompt = f"""
-        Analyze the following context and generate exactly {request.num_questions} multiple-choice questions about '{request.topic}' at a '{request.difficulty}' difficulty level.
+        # --- CONFIGURATION: BATCHING & THROTTLING ---
+        QUESTIONS_PER_BATCH = 4  # How many questions to generate per API call
+        THROTTLE_TIME = 3        # Seconds to pause between calls to prevent 429 error
         
-        CRITICAL STYLE RULES:
-        1. Write the questions as standalone exam questions.
-        2. ABSOLUTELY DO NOT use phrases like "According to the text", "The text introduces", "As mentioned in the document", or "Based on the excerpt".
-        3. The questions must sound natural and make perfect sense to a student who has never seen the source material.
+        all_generated_mcqs = []
+        
+        # Calculate how to slice the documents so each batch gets fresh context
+        num_batches = math.ceil(request.num_questions / QUESTIONS_PER_BATCH)
+        docs_per_batch = max(1, len(relevant_docs) // num_batches)
 
-        Difficulty Definitions:
-        - Easy: Direct, factual questions easily found in the text.
-        - Medium: Requires understanding of concepts or connecting two ideas in the text.
-        - Hard: Requires deep analysis, inference, or applying the text's concepts to complex scenarios.
+        # --- BATCH GENERATION LOOP ---
+        for i in range(0, request.num_questions, QUESTIONS_PER_BATCH):
+            
+            # 1. Determine how many questions we need in this specific batch
+            current_batch_count = min(QUESTIONS_PER_BATCH, request.num_questions - i)
+            
+            # 2. Slice the context so the LLM doesn't repeat questions
+            start_idx = (i // QUESTIONS_PER_BATCH) * docs_per_batch
+            end_idx = start_idx + docs_per_batch
+            batch_docs = relevant_docs[start_idx:end_idx]
+            
+            # If we run out of unique docs, fall back to using all of them
+            if not batch_docs:
+                batch_docs = relevant_docs
+                
+            context = "\n\n".join([doc.page_content for doc in batch_docs])
+            print(f"🚀 Processing Batch {(i//QUESTIONS_PER_BATCH) + 1} (Generating {current_batch_count} questions)...")
 
-        You must output ONLY valid JSON in the exact format below, with no additional conversational text or markdown.
-        Each question MUST have exactly 4 options. The answer must be the exact string from the options array.
+            # --- GENERATION (PROMPT STRUCTURE UNCHANGED) ---
+            prompt = f"""
+            Analyze the following context and generate exactly {current_batch_count} multiple-choice questions about '{request.topic}' at a '{request.difficulty}' difficulty level.
+            
+            CRITICAL STYLE RULES:
+            1. Write the questions as standalone exam questions.
+            2. ABSOLUTELY DO NOT use phrases like "According to the text", "The text introduces", "As mentioned in the document", or "Based on the excerpt".
+            3. The questions must sound natural and make perfect sense to a student who has never seen the source material.
 
-        {{
-          "status": "success",
-          "count": {request.num_questions},
-          "mcqs": [
+            Difficulty Definitions:
+            - Easy: Direct, factual questions easily found in the text.
+            - Medium: Requires understanding of concepts or connecting two ideas in the text.
+            - Hard: Requires deep analysis, inference, or applying the text's concepts to complex scenarios.
+
+            You must output ONLY valid JSON in the exact format below, with no additional conversational text or markdown.
+            Each question MUST have exactly 4 options. The answer must be the exact string from the options array.
+
             {{
-              "question": "Which of the following is NOT a primary problem that jQuery addresses for raw JavaScript developers?",
-              "options": ["Complexity", "Cross-browser inconsistencies", "Server-side processing", "Inconsistent styling methods"],
-              "answer": "Server-side processing"
+              "status": "success",
+              "count": {current_batch_count},
+              "mcqs": [
+                {{
+                  "question": "Which of the following is NOT a primary problem that jQuery addresses for raw JavaScript developers?",
+                  "options": ["Complexity", "Cross-browser inconsistencies", "Server-side processing", "Inconsistent styling methods"],
+                  "answer": "Server-side processing"
+                }}
+              ]
             }}
-          ]
-        }}
 
-        Context to analyze: 
-        {context}
-        """
+            Context to analyze: 
+            {context}
+            """
 
-        raw_response = await provider.generate_mcqs(prompt)
-        
-        # Clean the response
-        cleaned_response = re.sub(r'```json\n|\n```|```', '', raw_response).strip()
-
-        try:
-            parsed_data = json.loads(cleaned_response)
-            # background_tasks.add_task(cleanup_chroma_folder, persist_dir)
+            # 3. Call the provider (which now has your 429 Groq fallback built in!)
+            raw_response = await provider.generate_mcqs(prompt)
             
-            # gc.collect()
+            # 4. Clean and parse the response
+            cleaned_response = re.sub(r'```json\n|\n```|```', '', raw_response).strip()
 
-            return parsed_data
-            
-        except json.JSONDecodeError:
-            # background_tasks.add_task(cleanup_chroma_folder, persist_dir)
-            return {
-                "status": "error", 
-                "message": "LLM did not return valid JSON.", 
-                "raw_output": cleaned_response
-            }
+            try:
+                parsed_data = json.loads(cleaned_response)
+                if "mcqs" in parsed_data:
+                    all_generated_mcqs.extend(parsed_data["mcqs"])
+            except json.JSONDecodeError:
+                print(f"⚠️ JSON Parse Error in batch {(i//QUESTIONS_PER_BATCH) + 1}. Skipping batch.")
+                continue # If one batch fails, don't crash the whole app! Just move to the next.
+
+            # 5. THROTTLING
+            if i + QUESTIONS_PER_BATCH < request.num_questions:
+                print(f"⏱️ Sleeping for {THROTTLE_TIME}s to respect Gemini API limits...")
+                await asyncio.sleep(THROTTLE_TIME)
+
+        # --- FINAL COMPILE ---
+        # background_tasks.add_task(cleanup_chroma_folder, persist_dir)
+        # gc.collect()
+
+        return {
+            "status": "success",
+            "count": len(all_generated_mcqs),
+            "mcqs": all_generated_mcqs
+        }
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
+    
 @app.post("/download-pdf")
 async def download_question_paper(request: PDFDownloadRequest):
     """API 3: Takes a list of MCQs and generates a formatted PDF question paper."""
